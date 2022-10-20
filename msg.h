@@ -1,7 +1,7 @@
 #ifndef MSG_H
 #define MSG_H
 
-#include "C:\Qt\Projects\BNAManager\bnacommontypes.h"
+#include "../BNAManager/bnacommontypes.h"
 #include "streamtools.h"
 
 #include <QJsonValue>

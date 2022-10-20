@@ -14,9 +14,6 @@ constexpr int32_t offset_sections = 112;
 constexpr char padding_literal = 0xCC;
 //constexpr int32_t msg_offset = 148;
 constexpr auto offset_data_size = 0x10;
-
-}
-
 } // namespace
 
 namespace imas {
