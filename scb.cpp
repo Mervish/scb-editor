@@ -1,17 +1,26 @@
 #include "scb.h"
 
 #include "streamtools.h"
+#include "../bna-manager/datatools.h"
+
 #include <QDebug>
-#include <boost/iostreams/device/array.hpp>
-#include <boost/iostreams/stream.hpp>
+
 #include <filesystem>
 #include <fstream>
 #include <ranges>
 
+#include <boost/iostreams/device/array.hpp>
+#include <boost/iostreams/stream.hpp>
+
+#warning "Incomplete! SCB saving is not working."
+
 namespace {
-constexpr int32_t offset_name = 0x30;
+constexpr int32_t offset_unknown_header_data = 0x14;
+constexpr int32_t offset_header_cache = 0x30;
 constexpr int32_t offset_sections = 112;
-constexpr char padding_literal = 0xCC;
+//For some reason scb-file uses different paddings for different sections.
+constexpr char pre_MSG_padding_literal = 0xCD;
+constexpr char post_MSG_padding_literal = 0xCC;
 //constexpr int32_t msg_offset = 148;
 constexpr auto offset_data_size = 0x10;
 } // namespace
@@ -36,32 +45,28 @@ void SCB::loadFromData(const std::vector<char> &data) {
 MSG &SCB::msg_data() { return m_msg_data; }
 
 template <class S> void SCB::openFromStream(S &stream) {
+  stream.seekg(offset_unknown_header_data);
+  stream.read(m_header_cache.data(), m_header_cache.size());
   stream.seekg(offset_sections);
 
-  ScbData sections;
-  std::vector<ScbSection *> sections_agg = {
-      &sections.CMD, &sections.LBL, &sections.MSG, &sections.VCN,
-      &sections.LBN, &sections.RSC, &sections.RSN};
-  for (auto section : sections_agg) {
-    stream.ignore(4);
+  for (auto section : m_sections_agg) {
+    stream.read(section->label, sizeof(ScbSection::label));
     section->size = imas::tools::readLong(stream);
     section->offset = imas::tools::readLong(stream);
     stream.ignore(4);
   }
-  std::ranges::sort(sections_agg, [](ScbSection *left, ScbSection *right) {
+  std::ranges::sort(m_sections_agg, [](ScbSection *left, ScbSection *right) {
     return left->offset < right->offset;
   });
-  for (auto section : sections_agg) {
+  for (auto section : m_sections_agg) {
     stream.seekg(section->offset);
     section->data.resize(section->size);
     stream.read(section->data.data(), section->size);
   }
+  m_msg_data.loadFromData(m_sections.MSG.data);
 
-  /*std::filesystem::path file_out(filename);
-  file_out.replace_extension(".msg");
-  std::ofstream msg_strem(file_out, std::ios_base::binary);
-  msg_strem.write(sections.MSG.data.data(), sections.MSG.size);*/
-  m_msg_data.loadFromData(sections.MSG.data);
+  //Testing
+  updateSectionData();
 
   qInfo() << "This is it.";
 }
@@ -75,6 +80,32 @@ void SCB::saveToFile(const std::string &filename)
   saveToStream(stream);
 }
 
+void SCB::rebuild()
+{
+    msg_data().saveToData(m_sections.MSG.data);
+    m_sections.MSG.size = 0;
+}
+
+void SCB::updateSectionData() {
+    /*if(std::ranges::all_of(m_sections_agg, [](ScbSection* section){
+        return section->data.size() == section->size;
+    })){
+        return;
+    }*/
+    auto iter = m_sections_agg.begin();
+    (*iter)->size = (*iter)->data.size();
+    auto next = iter + 1;
+    auto const end = m_sections_agg.cend();
+    ByteCounter counter{m_sections_agg.front()->offset};
+    while(next != end) {
+        counter.addSize((*iter)->data.size());
+        counter.pad(0x10);
+        (*next)->offset = counter.offset;
+        (*next)->size = (*next)->data.size();
+        iter = next++;
+    }
+}
+
 template<class S>
 void SCB::saveToStream(S &stream)
 {
@@ -84,10 +115,28 @@ void SCB::saveToStream(S &stream)
   stream.put(0x45);
   tools::padStream(stream, 0, 3);
   stream.put(0x45);
-  tools::padStream(stream, 0, 16);
+  tools::padStream(stream, 0, 4);
+  stream.write(m_header_cache.data(), m_header_cache.size());
+  //Writing section header
+  updateSectionData();
+  for(auto section: m_sections_agg) {
+    stream.write(section->label, sizeof(ScbSection::label));
+    imas::tools::writeLong(stream, section->size);
+    imas::tools::writeLong(stream, section->offset);
+    imas::tools::padStream(stream, post_MSG_padding_literal, 4);
+  }
+  //Writing section data
+  bool post_msg = false;
+  for(auto section: m_sections_agg) {
+      stream.write(section->data.data(), section->data.size());
+      imas::tools::evenWriteStream(stream, post_msg ? post_MSG_padding_literal : pre_MSG_padding_literal);
+      if(section == &m_sections.MSG){
+          post_msg = true;
+      }
+  }
 
   //Finalizing
-  tools::evenWriteStream(stream, padding_literal);
+  tools::evenWriteStream(stream, post_MSG_padding_literal);
   int size = stream.tellp().operator long long() - 32;
   stream.seekp(offset_data_size);
   tools::writeLong(stream, size);

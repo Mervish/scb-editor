@@ -1,6 +1,8 @@
 #include "msg.h"
 
 #include <QJsonArray>
+#warning "Remove debug linkage!"
+#include <QFileInfo>
 
 namespace  {
   constexpr char padding_literal = 0xCD;
@@ -16,14 +18,49 @@ void MSG::loadFromFile(const std::string &filename) {
     return;
   }
   openFromStream(stream);
+  qInfo() << "File size = " << QFileInfo(QString::fromStdString(filename)).size();
+  qInfo() << "Calculated size = " << calculateSize();
 }
 
-QJsonValue MSG::toJson() {
-  QJsonArray msg_json;
-  for (auto const &msg : m_entries) {
-    msg_json.append(QJsonValue(QString::fromStdU16String(msg.data)));
+void MSG::saveToFile(const std::string &filename)
+{
+  std::ofstream stream(filename, std::ios_base::binary);
+  if(!stream.is_open()){
+    return;
   }
-  return msg_json;
+  saveToStream(stream);
+}
+
+void MSG::loadFromData(const std::vector<char> &data) {
+  boost::iostreams::array_source asource(data.data(), data.size());
+  boost::iostreams::stream<boost::iostreams::array_source> data_stream{asource};
+  openFromStream(data_stream);
+}
+
+size_t MSG::headerSize() const {
+    auto const entry_count = m_entries.size();
+    return 16 + (entry_count % 2 ? (entry_count * 8) + 8 : (entry_count * 8));
+}
+
+size_t MSG::stringsSize() const {
+    return std::accumulate(m_entries.begin(), m_entries.end(), 0, [](const auto &a, const auto &b){
+        return a + (b.data.size() * 2);
+      });
+}
+
+size_t MSG::calculateSize() const {
+    ByteCounter counter{32 + headerSize()};
+    counter.pad(0x10);
+    counter.addSize(stringsSize());
+    counter.pad(0x10);
+    return counter.offset;
+}
+
+void MSG::saveToData(std::vector<char> &data) {
+  data.resize(calculateSize());
+  boost::iostreams::array_sink asink(data.data(), data.size());
+  boost::iostreams::stream<boost::iostreams::array_sink> data_stream{asink};
+  saveToStream(data_stream);
 }
 
 bool MSG::fromJson(QJsonValue const &json) {
@@ -39,21 +76,13 @@ bool MSG::fromJson(QJsonValue const &json) {
   return true;
 }
 
-void MSG::loadFromData(const std::vector<char> &data) {
-  boost::iostreams::array_source asource(data.data(), data.size());
-  boost::iostreams::stream<boost::iostreams::array_source> data_stream{asource};
-  openFromStream(data_stream);
-}
-
-void MSG::saveToFile(const std::string &filename)
-{
-  std::ofstream stream(filename, std::ios_base::binary);
-  if(!stream.is_open()){
-    return;
+QJsonValue MSG::toJson() {
+  QJsonArray msg_json;
+  for (auto const &msg : m_entries) {
+    msg_json.append(QJsonValue(QString::fromStdU16String(msg.data)));
   }
-  saveToStream(stream);
+  return msg_json;
 }
-
 
 template <class S> void MSG::openFromStream(S &stream) {
   std::string label;
@@ -92,13 +121,10 @@ void MSG::saveToStream(S &stream)
   //Write string count
   tools::writeShort(stream, m_entries.size()); //string count
   tools::padStream(stream, 0, 4);
-  int16_t str_size = std::accumulate(m_entries.begin(), m_entries.end(), 0, [](const auto &a, const auto &b){
-    return a + (b.data.size() * 2);
-  });
+  int16_t const str_size = stringsSize();
   tools::writeShort(stream, str_size); //string data size
   tools::writeShort(stream, 0x10); //idk what this does
-  auto entry_count = m_entries.size();
-  int16_t header_size = 16 + (entry_count % 2 ? (entry_count * 8) + 8 : (entry_count * 8));
+  int16_t const header_size = headerSize();
   tools::writeShort(stream, header_size); //header size
   tools::padStream(stream, 0, 4);
   int32_t text_offset = 0;

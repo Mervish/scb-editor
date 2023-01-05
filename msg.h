@@ -1,7 +1,8 @@
 #ifndef MSG_H
 #define MSG_H
 
-#include "../BNAManager/bnacommontypes.h"
+#include "../bna-manager/bnacommontypes.h"
+#include "../bna-manager/datatools.h"
 #include "streamtools.h"
 
 #include <QJsonValue>
@@ -22,11 +23,13 @@ namespace imas {
   {
   public:
     MSG();
-    void loadFromFile(const std::string &filename);
     void loadFromData(std::vector<char> const& data);
+    void loadFromFile(const std::string &filename);
+    void saveToData(std::vector<char> &data);
     void saveToFile(const std::string &filename);
     QJsonValue toJson();
     bool fromJson(const QJsonValue &json);
+
   protected:
     template<class S>
     void openFromStream(S &stream);
@@ -35,6 +38,9 @@ namespace imas {
   private:
     std::vector<char> m_static_header; //Data coming before string header
     std::vector<MSGEntry> m_entries;
+    size_t headerSize() const;
+    size_t stringsSize() const;
+    size_t calculateSize() const;
   };
 }
 

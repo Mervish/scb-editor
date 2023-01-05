@@ -22,16 +22,21 @@ MainWindow::MainWindow(QWidget *parent)
     auto path = QFileDialog::getOpenFileName(this, "Select scb-file", "C:/Users/Mervish/Documents/Xenia/bna", "Idolmaster script file (*.scb)");
     if(path.isEmpty()) { return; }
     m_scb_holder.loadFromFile(path.toStdString());
-    QJsonObject json;
-    auto filepath = std::filesystem::path(path.toStdString());
-    json["name"] = QString::fromStdString(filepath.filename().string());
-    json["msg"] = m_scb_holder.msg_data().toJson();
-    filepath.replace_extension(".json");
-    QFile json_file(filepath);
-    json_file.open(QFile::WriteOnly);
-    json_file.write(QJsonDocument(json).toJson());
+    //QJsonObject json;
+    msg_path = std::filesystem::path(path.toStdString());
+    msg_path.replace_extension(".msg");
+    m_scb_holder.msg_data().saveToFile(msg_path.string());
     ui->actionSet_json->setEnabled(true);
     ui->actionSave->setEnabled(true);
+  });
+
+  connect(ui->actionRebuild_scb_test, &QAction::triggered, [this]{
+      auto path = QFileDialog::getOpenFileName(this, "Select scb-file", "C:/Users/Mervish/Documents/Xenia/bna", "Idolmaster script file (*.scb)");
+      if(path.isEmpty()) { return; }
+      m_scb_holder.loadFromFile(path.toStdString());
+      auto filepath = std::filesystem::path(path.toStdString());
+      filepath.replace_filename(filepath.stem().string() + "_rebuilt" + filepath.extension().string());
+      m_scb_holder.saveToFile(filepath.string());
   });
 
   connect(ui->actionOpen_msg_debug, &QAction::triggered, [this]{
@@ -48,15 +53,18 @@ MainWindow::MainWindow(QWidget *parent)
     QFile json_file(path);
     json_file.open(QFile::ReadOnly);
     auto json = QJsonDocument::fromJson(json_file.readAll());
-    m_msg_holder.fromJson(json.object());
+    m_scb_holder.msg_data().fromJson(json.object());
+    auto translated_msg = msg_path;
+    translated_msg.replace_filename(translated_msg.stem().string() + "_rebuilt" + translated_msg.extension().string());
+    m_scb_holder.msg_data().saveToFile(translated_msg.string());
   });
 
-  connect(ui->actionSet_json, &QAction::triggered, [this]{
+  connect(ui->actionSave, &QAction::triggered, [this]{
     auto path = QFileDialog::getSaveFileName(this, "Select scb-file", "C:/Users/Mervish/Documents/Xenia/bna", "Idolmaster script file (*.scb)");
     if(path.isEmpty()) { return; }
-    //m_scb_holder.saveToFile(path.toStdString());
+    m_scb_holder.rebuild();
+    m_scb_holder.saveToFile(path.toStdString());
   });
-
 }
 
 MainWindow::~MainWindow()

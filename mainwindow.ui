@@ -20,7 +20,7 @@
      <x>0</x>
      <y>0</y>
      <width>800</width>
-     <height>21</height>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -31,6 +31,8 @@
     <addaction name="actionSet_json"/>
     <addaction name="actionSave"/>
     <addaction name="actionOpen_msg_debug"/>
+    <addaction name="actionRebuild_scb_test"/>
+    <addaction name="actionOpen_scb_msg"/>
    </widget>
    <addaction name="menuFile"/>
   </widget>
@@ -59,6 +61,16 @@
   <action name="actionOpen_msg_debug">
    <property name="text">
     <string>Open msg debug...</string>
+   </property>
+  </action>
+  <action name="actionRebuild_scb_test">
+   <property name="text">
+    <string>Rebuild scb test...</string>
+   </property>
+  </action>
+  <action name="actionOpen_scb_msg">
+   <property name="text">
+    <string>Open scb-&gt;msg...</string>
    </property>
   </action>
  </widget>
